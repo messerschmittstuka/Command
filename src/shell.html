@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Command</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<style>
+html,body{margin:0;height:100%;background:#14170f;color:#e6dfc4;font:14px/1.4 Georgia,serif;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#hud{display:none;position:fixed;inset:0;pointer-events:none}
+#hud>*{position:absolute}
+#clock{top:10px;left:12px;font:600 15px monospace;background:#0008;padding:4px 8px;border-radius:4px}
+#speed{top:10px;left:260px;pointer-events:auto}
+#speed button{background:#0008;color:#e6dfc4;border:1px solid #6b6648;padding:3px 8px;margin-right:3px;cursor:pointer}
+#sect{top:46px;left:12px;background:#0008;padding:8px 10px;border-radius:4px;width:210px}
+#sect .row{display:flex;align-items:center;margin:3px 0;font-size:12px}#sect .row b{width:70px;font-weight:normal;opacity:.8}
+.track{flex:1;height:7px;background:#0006}.fill{height:100%;background:#7ea05a}.fill.bad{background:#b5502f}
+#journal{top:10px;right:12px;width:340px;max-height:42vh;overflow:hidden;background:#0008;padding:8px 10px;border-radius:4px;font-size:12px}
+.j{margin:4px 0}.j span{opacity:.55;font-family:monospace;margin-right:4px}.j-superior{color:#ecd58f}.j-orders{color:#9fd0ff}
+#prompt{display:none;bottom:18%;left:50%;transform:translateX(-50%);background:#000a;padding:6px 14px;border-radius:4px}
+#banner{top:16%;left:50%;transform:translateX(-50%);max-width:70%;text-align:center;background:#000b;padding:8px 16px;border-radius:4px;opacity:0;transition:opacity .4s;font-size:16px}
+#cross{top:50%;left:50%;width:4px;height:4px;margin:-2px;background:#fff9;border-radius:50%}
+#help{bottom:10px;left:12px;font-size:11px;opacity:.65}
+#dialogue{display:none;position:fixed;bottom:6%;left:50%;transform:translateX(-50%);width:min(620px,92vw);background:#1a1d14f2;border:1px solid #6b6648;padding:14px;border-radius:6px;pointer-events:auto}
+#dlg-title{font-weight:bold;color:#ecd58f;margin-bottom:6px}#dlg-text{min-height:3em;margin-bottom:10px}
+#dlg-opts button{display:block;width:100%;text-align:left;background:#2a2e20;color:#e6dfc4;border:1px solid #4b4830;padding:6px 10px;margin:3px 0;cursor:pointer;font:inherit}
+#dlg-opts button:hover{background:#3a3f2b}#dlg-opts .leave{opacity:.7}
+.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;background:#14170f}
+#menu button{display:block;margin:6px auto;min-width:340px;background:#2a2e20;color:#e6dfc4;border:1px solid #6b6648;padding:9px;font:inherit;cursor:pointer}#menu button:hover{background:#3a3f2b}
+#menu input{background:#0006;color:#e6dfc4;border:1px solid #6b6648;padding:6px;margin:6px 0;text-align:center}
+#loading{display:none;position:fixed;top:45%;width:100%;text-align:center}
+#summary{display:none;position:fixed;inset:0;background:#000c;align-items:center;justify-content:center;pointer-events:auto}#summary>div{background:#1a1d14;border:1px solid #6b6648;padding:20px;max-width:520px}
+#err{display:none;position:fixed;bottom:0;left:0;right:0;max-height:30vh;overflow:auto;background:#400;color:#fcc;font:11px monospace;padding:6px;white-space:pre-wrap;z-index:9}
+#bhud{display:none}#bhud>*{position:fixed;pointer-events:none}
+#btimer{top:10px;left:12px;background:#0009;padding:6px 10px;border-radius:4px;font-size:13px}
+#binbox{top:50px;right:12px;width:380px;max-height:45vh;overflow:hidden;background:#0008;padding:8px 10px;border-radius:4px;font-size:12px}
+.m{margin:4px 0}.m span{opacity:.55;font-family:monospace}.m-refusal{color:#f0a090}.m-approval{color:#a0e0a0}.m-orders{color:#ecd58f}
+#bbanner{top:16%;left:50%;transform:translateX(-50%);background:#000b;padding:8px 16px;border-radius:4px;opacity:0;transition:opacity .4s}
+#bhelp{bottom:10px;left:12px;font-size:11px;opacity:.65}
+#mapwrap{display:none;inset:0;background:#000b;align-items:center;justify-content:center;gap:12px;pointer-events:auto!important}
+#map{width:min(78vh,60vw);height:min(70vh,54vw);background:#c9c4a6;cursor:crosshair}
+#orders button{display:block;min-width:220px;margin:4px 0;background:#2a2e20;color:#e6dfc4;border:1px solid #6b6648;padding:7px;font:inherit;cursor:pointer}#orders button.req{border-color:#b08a3a}
+#mapnote{max-width:220px;font-size:12px;margin-top:8px}
+#after{display:none;position:fixed;inset:0;background:#000c;align-items:center;justify-content:center;pointer-events:auto}#after>div{background:#1a1d14;border:1px solid #6b6648;padding:20px;max-width:640px;max-height:86vh;overflow:auto}
+#after td{padding:2px 14px 2px 0}#after .i-decision{color:#ecd58f}#after button,#march{background:#2a2e20;color:#e6dfc4;border:1px solid #6b6648;padding:8px 16px;font:inherit;cursor:pointer}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="hud">
+ <div id="clock"></div>
+ <div id="speed"><button data-speed="0">Pause</button><button data-speed="1">x1</button><button data-speed="10">x10</button><button data-speed="60">x60</button></div>
+ <div id="sect"><b id="strength"></b><div id="activity" style="font-size:12px;opacity:.8;margin:2px 0 6px"></div>
+  <div class="row"><b>Morale</b><div class="track"><div id="b-morale" class="fill"></div></div></div><div class="row"><b>Fatigue</b><div class="track"><div id="b-fatigue" class="fill"></div></div></div>
+  <div class="row"><b>Cohesion</b><div class="track"><div id="b-cohesion" class="fill"></div></div></div><div class="row"><b>Ammo</b><div class="track"><div id="b-ammo" class="fill"></div></div></div>
+  <div class="row"><b>Readiness</b><div class="track"><div id="b-ready" class="fill"></div></div></div></div>
+ <div id="journal"></div><div id="prompt"></div><div id="banner"></div><div id="cross"></div>
+ <div id="help">WASD move | Shift run | mouse look (click) | V camera | E speak | 1 follow 2 extend 3 halt 4 dismiss | T speed | P pause</div>
+</div>
+<div id="dialogue"><div id="dlg-title"></div><div id="dlg-text"></div><div id="dlg-opts"></div></div>
+<div id="summary"><div><h3>Departure</h3><div id="summary-body"></div></div></div>
+<div id="bhud"><div id="btimer"></div><div id="binbox"></div><div id="bbanner"></div><div id="cross2" style="top:50%;left:50%;width:4px;height:4px;margin:-2px;background:#fff9;border-radius:50%"></div>
+ <div id="bhelp">WASD move | Shift run | C prone | mouse look (click) | V camera | 1 hold 2 advance 3 cover 4 charge 5 fall back (orders to your section) | M tactical map: orders, artillery, reserve | P pause</div>
+ <div id="mapwrap"><canvas id="map" width="760" height="660"></canvas><div><div id="orders"></div><div id="mapnote">Select a unit on the map, then give an order. Orders to other sections go by runner or voice and take time.</div></div></div></div>
+<div id="after"><div><h3>After the action</h3><div id="after-body"></div><p><button id="after-ok">Continue</button></p></div></div>
+<div id="menu" class="overlay"><h2>COMMAND</h2><p style="opacity:.7;margin:0 0 14px">A First World War officer's career. Verdun, February 1916. (Stage 2: rear area)</p>
+ <input id="offname" placeholder="Officer name (optional)"><div id="regs"></div></div>
+<div id="loading">Loading the village...</div>
+<div id="err"></div>
+<script>
+@@SCRIPT@@
+</script></body></html>
