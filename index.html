@@ -555,20 +555,20 @@ function makeUnit(team,reg,off,idx,isPlayer){
   units.push(u); (team==='B'?unitsB:unitsC).push(u);
   return u;
 }
-function baseAnchor(reg){ const s=reg.team==='B'?1:-1; return {x:(reg.ri-1)*22,z:BASEZ[reg.team]-s*1.5}; }
+function baseAnchor(reg){ const s=reg.team==='B'?1:-1; return {x:(reg.ri-1)*14,z:BASEZ[reg.team]-s*1.5}; }
 function slotPos(r,u){
-  const i=u.idx, lat=((i>>1)-2)*1.55+((i&1)?0.7:0), back=2.0+(i&1)*1.4;
+  const i=u.idx, rank=i<9?0:1, file=i%9, lat=(file-4)*1.15, back=1.8+rank*1.45;   // two ranks, shoulder to shoulder
   const f=fwdv(r.heading), rg=rightv(r.heading);
   return [r.ax-f[0]*back+rg[0]*lat, r.az-f[1]*back+rg[1]*lat];
 }
 function createArmies(){
   for(const team of ['B','C']){
     for(let ri=0;ri<3;ri++){
-      const reg={team,ri,id:team+ri,officer:null,members:[],mode:'march',modeT:0,heading:team==='B'?0:Math.PI,ax:0,az:0,point:null,reassignT:0,scanT:Math.random()*0.3,enemy:null,faceYaw:0,loadedRatio:1,msg:'',chargeT:0,speed:3.3};
+      const reg={team,ri,id:team+ri,officer:null,members:[],mode:'march',modeT:0,heading:team==='B'?0:Math.PI,ax:0,az:0,point:null,reassignT:0,scanT:Math.random()*0.3,enemy:null,faceYaw:0,loadedRatio:1,msg:'',chargeT:0,speed:3.3,morale:1,lastHit:-99};
       regs.push(reg);
       const a=baseAnchor(reg); reg.ax=a.x; reg.az=a.z;
       reg.officer=makeUnit(team,reg,true,-1,false);
-      for(let i=0;i<9;i++) reg.members.push(makeUnit(team,reg,false,i,team==='B'&&ri===PLAYER_REG&&i===4));
+      for(let i=0;i<18;i++) reg.members.push(makeUnit(team,reg,false,i,team==='B'&&ri===PLAYER_REG&&i===4));
     }
   }
 }
@@ -695,6 +695,7 @@ let feedDirty=true;
 function damage(t,dmg,src,how){
   if(!t.alive) return;
   t.hp-=dmg;
+  { const rg=t.reg; rg.lastHit=GT; if(t.hp<=0){ rg.morale-=t.off?0.12:0.03; if(rg.morale<0.2&&rg.mode!=='rout') breakRegiment(rg); } }
   if(t.isPlayer){ onPlayerHurt(src); }
   if(t.hp<=0){
     t.hp=0; t.alive=false; t.deathT=0; t.respawnAt=GT+(t.isPlayer?6:t.off?13:8+Math.random()*3); t.vx=t.vz=0; t.fireAt=-1;
@@ -741,24 +742,35 @@ function choosePoint(r,dt){
   }
   r.point=best;
 }
+function breakRegiment(r){
+  setMode(r,'rout','THE LINE BREAKS!'); r.point=null;
+  for(const m of r.members){ m.fireAt=-1; m.target=null; }
+  if(r.team==='C'&&r.officer.alive&&dist2(r.officer,player)<120) showBanner('THE REBELS BREAK!');
+}
 function updateRegiment(r,dt){
   const o=r.officer;
+  if(r.mode==='rout'){
+    r.modeT+=dt; const a=baseAnchor(r); r.ax=o.x; r.az=o.z;
+    if(r.modeT>10||(o.alive&&Math.hypot(o.x-a.x,o.z-a.z)<9&&r.modeT>4)){ r.morale=0.7; setMode(r,'march','THE LINE RALLIES!'); }
+    return;
+  }
+  if(GT-r.lastHit>5&&r.morale<1) r.morale=Math.min(1,r.morale+0.02*dt);
   let alive=0,loaded=0; for(const m of r.members) if(m.alive){ alive++; if(m.loaded) loaded++; }
   r.loadedRatio=alive?loaded/alive:0;
   r.modeT+=dt; choosePoint(r,dt);
   if(!o.alive){ if(r.mode!=='skirmish'){ r.mode='skirmish'; r.msg=''; } let sx=0,sz=0,n=0; for(const m of r.members) if(m.alive){ sx+=m.x; sz+=m.z; n++; } if(n){ r.ax=sx/n; r.az=sz/n; } return; }
   if(r.mode==='skirmish') setMode(r,'march','');
   r.ax=o.x; r.az=o.z;
-  r.scanT-=dt; if(r.scanT<=0){ r.scanT=0.3; r.enemy=nearestEnemy(o,70,true); }
+  r.scanT-=dt; if(r.scanT<=0){ r.scanT=0.3; r.enemy=nearestEnemy(o,105,true); }
   const e=r.enemy&&r.enemy.alive?r.enemy:null, d=e?dist2(o,e):999;
   switch(r.mode){
     case 'march':
-      if(e&&d<12){ setMode(r,'charge','CHARGE!'); break; }
-      if(e&&d<=50&&r.loadedRatio>=0.5){ r.faceYaw=headingTo(e.x-o.x,e.z-o.z); setMode(r,'ready','MAKE READY!'); break; }
+      if(e&&(d<12||(e.reg.morale<0.4&&d<34&&r.morale>0.5))){ setMode(r,'charge','CHARGE!'); break; }
+      if(e&&d<=58&&r.loadedRatio>=0.5){ r.faceYaw=headingTo(e.x-o.x,e.z-o.z); setMode(r,'ready','MAKE READY!'); break; }
       break;
     case 'ready':
-      if(!e||d>64){ setMode(r,'march',''); break; }
-      if(d<12){ setMode(r,'charge','CHARGE!'); break; }
+      if(!e||d>72){ setMode(r,'march',''); break; }
+      if(d<12||(e.reg.morale<0.4&&d<34&&r.morale>0.5)){ setMode(r,'charge','CHARGE!'); break; }
       r.faceYaw=headingTo(e.x-o.x,e.z-o.z);
       if(r.modeT>1.3) setMode(r,'present','PRESENT!');
       break;
@@ -770,9 +782,9 @@ function updateRegiment(r,dt){
       if(r.modeT>1.0) setMode(r,'reload','');
       break;
     case 'reload':
-      if(e&&d<12){ setMode(r,'charge','CHARGE!'); break; }
-      if(e&&d<=56&&r.loadedRatio>=0.65&&r.modeT>2){ r.faceYaw=headingTo(e.x-o.x,e.z-o.z); setMode(r,'ready','MAKE READY!'); break; }
-      if(!e||d>64||r.modeT>11) setMode(r,'march','');
+      if(e&&(d<12||(e.reg.morale<0.4&&d<34&&r.morale>0.5))){ setMode(r,'charge','CHARGE!'); break; }
+      if(e&&d<=62&&r.loadedRatio>=0.65&&r.modeT>2){ r.faceYaw=headingTo(e.x-o.x,e.z-o.z); setMode(r,'ready','MAKE READY!'); break; }
+      if(!e||d>72||r.modeT>14) setMode(r,'march','');
       break;
     case 'charge':
       if(!e||d>26){ r.chargeT+=dt; if(r.chargeT>2.5){ r.chargeT=0; setMode(r,'march',''); } } else r.chargeT=0;
@@ -799,7 +811,11 @@ function updatePrivate(u,dt){
   const r=u.reg, tg=u.target, td=tg?dist2(u,tg):999, mode=r.mode, officerUp=r.officer.alive;
   let gx=u.x,gz=u.z,speed=0,face=null, raise=0.35;
   const shooting=(mode==='ready'||mode==='present'||mode==='fire');
-  if(tg&&(mode==='charge'||td<7||(!u.loaded&&td<14&&!shooting&&officerUp&&mode!=='reload')||(!officerUp&&!u.loaded&&td<16))){
+  if(mode==='rout'){
+    const a=baseAnchor(r); gx=a.x+((u.idx%9)-4)*1.6; gz=a.z-(r.team==='B'?1:-1)*(u.idx<9?0:3); speed=6.6; raise=-0.1; u.fireAt=-1;
+    moveUnit(u,gx,gz,speed,dt,null); u.raise+=(raise-u.raise)*Math.min(1,dt*8); return;
+  }
+  if(tg&&(mode==='charge'||(td<3.5&&officerUp)||(!officerUp&&!u.loaded&&td<16))){
     gx=tg.x; gz=tg.z; speed=6.4; raise=-0.15;
     if(td<2.3&&u.meleeCD<=0) meleeStrike(u,tg);
   } else if(!officerUp){
@@ -828,6 +844,7 @@ function updateOfficer(u,dt){
   aiCommon(u,dt);
   const r=u.reg, tg=u.target, td=tg?dist2(u,tg):999, mode=r.mode;
   let gx=u.x,gz=u.z,speed=0,face=null, raise=0.2;
+  if(mode==='rout'){ const a=baseAnchor(r); gx=a.x; gz=a.z; speed=6.4; raise=-0.1; moveUnit(u,gx,gz,speed,dt,null); u.raise+=(raise-u.raise)*Math.min(1,dt*8); r.heading=u.heading; return; }
   if(mode==='charge'){
     const t=r.enemy&&r.enemy.alive?r.enemy:tg;
     if(t){ gx=t.x; gz=t.z; speed=5.8; raise=-0.1; if(dist2(u,t)<2.4&&u.meleeCD<=0) meleeStrike(u,t); }
@@ -835,8 +852,9 @@ function updateOfficer(u,dt){
     face=r.faceYaw; speed=0;
     raise=mode==='present'?1.15:mode==='fire'?-0.5:0.5;
   } else {
-    const p=r.point;
-    if(p){ const arr=Math.hypot(p.x-u.x,p.z-u.z); if(arr>p.r*0.45){ const g=flowGoal(p.i,u.x,u.z); gx=g[0]; gz=g[1]; speed=r.speed; } }
+    const p=r.point, en=r.enemy&&r.enemy.alive?r.enemy:null, de=en?dist2(u,en):999;
+    if(en&&de>46&&de<105){ gx=en.x; gz=en.z; speed=r.speed*0.9; }   // advance the line on the enemy
+    else if(p){ const arr=Math.hypot(p.x-u.x,p.z-u.z); if(arr>p.r*0.45){ const g=flowGoal(p.i,u.x,u.z); gx=g[0]; gz=g[1]; speed=r.speed; } }
     if(speed>0){ // the regiment keeps up with the officer
       let slow=0; for(const m of r.members) if(m.alive&&!m.isPlayer){ const s=slotPos(r,m); const d=Math.hypot(s[0]-m.x,s[1]-m.z); if(d>slow) slow=d; }
       if(slow>6) speed*=0.45;
@@ -936,6 +954,13 @@ function rayHitUnit(e,ox,oy,oz,dx,dy,dz){
 }
 function playerFire(){
   const p=player; if(!p.alive||state!=='play'||P.bayT>=0) return;
+  { // line discipline: in the ranks you fire only on the officer's word
+    const r=p.reg;
+    if(r.officer.alive&&r.mode!=='charge'&&r.mode!=='rout'&&r.mode!=='present'&&r.mode!=='fire'){
+      const s=slotPos(r,p);
+      if(Math.hypot(s[0]-p.x,s[1]-p.z)<9&&!nearestEnemy(p,12,false)){ if(p.loaded){ if(bannerT<=0.2) showBanner('HOLD FIRE - AWAIT THE ORDER'); return; } }
+    }
+  }
   if(!p.loaded){ startPlayerReload(); return; }
   p.loaded=false; P.kick=1; P.lastShot=GT;
   const f=fwdv(P.yaw), rg=rightv(P.yaw), cp=Math.cos(P.pitch), sp=Math.sin(P.pitch);
@@ -983,6 +1008,13 @@ function updatePlayer(dt){
   const sprint=!!(keys.ShiftLeft||keys.ShiftRight)&&iz>0;
   let speed=(sprint?6.8:4.4)*(P.bayT>=0?0.55:1)*(inWater(p.x,p.z)?0.55:1);
   let tvx=(f[0]*iz+rg[0]*ix)*speed, tvz=(f[1]*iz+rg[1]*ix)*speed;
+  { // no input: you keep your place in the line
+    const r=p.reg;
+    if(!ix&&!iz&&P.bayT<0&&r.officer.alive&&r.mode!=='charge'&&r.mode!=='rout'){
+      const s=slotPos(r,p), dx=s[0]-p.x, dz=s[1]-p.z, ds=Math.hypot(dx,dz);
+      if(ds>0.35&&ds<9){ const sp=clamp(ds*2.6,0,4.4); tvx=dx/ds*sp; tvz=dz/ds*sp; }
+    }
+  }
   if(P.bayT>=0&&P.bayT<0.28){ tvx+=f[0]*4.2; tvz+=f[1]*4.2; }
   const k=Math.min(1,dt*(P.onGround?10:2.2)); p.vx+=(tvx-p.vx)*k; p.vz+=(tvz-p.vz)*k;
   const np={x:p.x+p.vx*dt,z:p.z+p.vz*dt}; resolveCircle(np,0.4); p.x=np.x; p.z=np.z;
